@@ -1,4 +1,4 @@
-# Proyecto [Nombre de tu Platillo Volador / OVNI]
+# Proyecto [OVNI Mexicali]
 
 ## Acerca del Proyecto
 
