@@ -1,0 +1,116 @@
+// ========================================================
+//  Controlador de Vuelo para Platillo Volador (OVNI)
+//  Plataforma: Arduino / ESP32
+//  Sensor recomendado: MPU6050 o MPU9250
+//  Inspirado en la actividad OVNI de Mexicali
+// ========================================================
+
+#include <Wire.h>
+#include <MPU6050.h>          // Librería MPU6050 (o MPU9250)
+#include <PID_v1.h>           // Librería PID recomendada: https://github.com/br3ttb/Arduino-PID-Library
+
+// ====================== PINES ======================
+#define MOTOR1  5   // Delantero izquierdo
+#define MOTOR2  6   // Delantero derecho  
+#define MOTOR3  9   // Trasero izquierdo
+#define MOTOR4 10   // Trasero derecho
+
+// ====================== VARIABLES ======================
+MPU6050 mpu;
+
+// PID variables
+double SetpointRoll = 0,   InputRoll,   OutputRoll;
+double SetpointPitch = 0,  InputPitch,  OutputPitch;
+double SetpointYaw = 0,    InputYaw,    OutputYaw;
+double SetpointThrottle = 0;
+
+// Coeficientes PID (ajustar según pruebas)
+double KpRoll = 2.5, KiRoll = 0.05, KdRoll = 1.8;
+double KpPitch = 2.5, KiPitch = 0.05, KdPitch = 1.8;
+double KpYaw = 3.0, KiYaw = 0.0, KdYaw = 0.0;   // Yaw suele necesitar menos integral
+
+// Objetos PID
+PID pidRoll(&InputRoll, &OutputRoll, &SetpointRoll, KpRoll, KiRoll, KdRoll, DIRECT);
+PID pidPitch(&InputPitch, &OutputPitch, &SetpointPitch, KpPitch, KiPitch, KdPitch, DIRECT);
+PID pidYaw(&InputYaw, &OutputYaw, &SetpointYaw, KpYaw, KiYaw, KdYaw, DIRECT);
+
+// Variables auxiliares
+unsigned long prevTime = 0;
+float dt = 0.0;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+  
+  // Inicializar MPU6050
+  mpu.initialize();
+  if (!mpu.testConnection()) {
+    Serial.println("Error: MPU6050 no encontrado");
+    while(1);
+  }
+  
+  // Configurar límites de salida de los PID (±250 es un valor seguro inicial)
+  pidRoll.SetOutputLimits(-250, 250);
+  pidPitch.SetOutputLimits(-250, 250);
+  pidYaw.SetOutputLimits(-150, 150);
+  
+  pidRoll.SetMode(AUTOMATIC);
+  pidPitch.SetMode(AUTOMATIC);
+  pidYaw.SetMode(AUTOMATIC);
+  
+  // Configurar pines de motores como salida
+  pinMode(MOTOR1, OUTPUT);
+  pinMode(MOTOR2, OUTPUT);
+  pinMode(MOTOR3, OUTPUT);
+  pinMode(MOTOR4, OUTPUT);
+  
+  Serial.println("=== Controlador OVNI Mexicali iniciado ===");
+}
+
+void loop() {
+  unsigned long currentTime = millis();
+  dt = (currentTime - prevTime) / 1000.0;
+  prevTime = currentTime;
+
+  // Leer datos del sensor
+  int16_t ax, ay, az, gx, gy, gz;
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  // Calcular ángulos (simplificado - idealmente usar filtro de Kalman o Madgwick)
+  InputRoll  = atan2(ay, az) * 180 / PI;     // Roll
+  InputPitch = atan2(-ax, sqrt(ay*ay + az*az)) * 180 / PI; // Pitch
+  InputYaw   += gz * dt / 131.0;             // Integración simple de yaw (gyro)
+
+  // Leer comando de throttle (ejemplo desde receptor RC o potenciómetro)
+  SetpointThrottle = map(analogRead(A0), 0, 1023, 1000, 2000); // Ajustar según tu receptor
+
+  // Computar PID
+  pidRoll.Compute();
+  pidPitch.Compute();
+  pidYaw.Compute();
+
+  // Mezclador de motores para configuración discoidal / cuádruple simétrica
+  int motor1 = SetpointThrottle + OutputPitch + OutputRoll - OutputYaw;   // Delantero Izq
+  int motor2 = SetpointThrottle + OutputPitch - OutputRoll + OutputYaw;   // Delantero Der
+  int motor3 = SetpointThrottle - OutputPitch + OutputRoll + OutputYaw;   // Trasero Izq
+  int motor4 = SetpointThrottle - OutputPitch - OutputRoll - OutputYaw;   // Trasero Der
+
+  // Limitar valores para seguridad
+  motor1 = constrain(motor1, 1000, 2000);
+  motor2 = constrain(motor2, 1000, 2000);
+  motor3 = constrain(motor3, 1000, 2000);
+  motor4 = constrain(motor4, 1000, 2000);
+
+  // Escribir en los motores (usar ESC con señal PWM)
+  analogWrite(MOTOR1, map(motor1, 1000, 2000, 0, 255));
+  analogWrite(MOTOR2, map(motor2, 1000, 2000, 0, 255));
+  analogWrite(MOTOR3, map(motor3, 1000, 2000, 0, 255));
+  analogWrite(MOTOR4, map(motor4, 1000, 2000, 0, 255));
+
+  // Monitoreo por Serial (para tuning)
+  if (millis() % 200 == 0) {
+    Serial.print("Roll: "); Serial.print(InputRoll);
+    Serial.print(" | Pitch: "); Serial.print(InputPitch);
+    Serial.print(" | Throttle: "); Serial.println(SetpointThrottle);
+  }
+}
