@@ -1,0 +1,55 @@
+import numpy as np
+import time
+
+class PIDController:
+    def __init__(self, Kp, Ki, Kd, setpoint=0):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.setpoint = setpoint
+        self.previous_error = 0
+        self.integral = 0
+
+    def compute(self, current_value, dt):
+        error = self.setpoint - current_value
+        self.integral += error * dt
+        derivative = (error - self.previous_error) / dt
+        
+        output = (self.Kp * error) + (self.Ki * self.integral) + (self.Kd * derivative)
+        self.previous_error = error
+        return output
+
+# Simulación simple del OVNI
+class OVNI_Simulator:
+    def __init__(self):
+        self.altitude = 0.0          # Altura actual en metros
+        self.velocity = 0.0          # Velocidad vertical
+        self.mass = 2.0              # Masa en kg (ejemplo)
+        
+        # Controladores PID para cada eje
+        self.pid_altitude = PIDController(Kp=1.2, Ki=0.1, Kd=2.5, setpoint=10.0)
+
+    def update(self, dt):
+        # Leer sensores (en simulación usamos modelo físico simple)
+        thrust = self.pid_altitude.compute(self.altitude, dt)   # Salida del PID
+        
+        # Física básica: Fuerza neta = Empuje - Peso
+        net_force = thrust - (self.mass * 9.81)
+        acceleration = net_force / self.mass
+        
+        self.velocity += acceleration * dt
+        self.altitude += self.velocity * dt
+        
+        return self.altitude
+
+# Ejecución de la simulación
+if __name__ == "__main__":
+    ovni = OVNI_Simulator()
+    dt = 0.01  # Tiempo entre iteraciones (10 ms)
+    
+    print("Iniciando simulación de platillo volador...")
+    for i in range(1000):
+        alt = ovni.update(dt)
+        if i % 100 == 0:
+            print(f"Tiempo: {i*dt:.1f}s | Altura: {alt:.2f}m")
+        time.sleep(dt)  # Simula tiempo real
