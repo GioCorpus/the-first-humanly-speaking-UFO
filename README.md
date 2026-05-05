@@ -115,8 +115,7 @@ Desarrollar un UAV discoidal de mediano porte capaz de transportar **1 paciente 
 - [ ] Prototipo de tamaño funcional (150+ kg)
 
 ---
-
-## Estructura del Repositorio
+Estrutura del Proyecto
 
 ```
 /OVNI-Medevac
