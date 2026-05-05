@@ -1,0 +1,92 @@
+// ================================================
+//  Controlador de Vuelo OVNI - Ambulancia Sigilosa
+//  Plataforma: ESP32 + MPU6050 + 6-8 Ducted Fans
+//  Enfoque: Estabilidad + Baja vibración
+// ================================================
+
+#include <Wire.h>
+#include <MPU6050.h>
+#include <PID_v1.h>
+#include <ESP32Servo.h>
+
+// Pines (ajusta según tu placa)
+#define NUM_MOTORS 8
+const int motorPins[NUM_MOTORS] = {16, 17, 18, 19, 21, 22, 23, 25};
+
+MPU6050 mpu;
+Servo motors[NUM_MOTORS];
+
+// PID para 4 ejes
+double SetRoll=0, InputRoll, OutputRoll;
+double SetPitch=0, InputPitch, OutputPitch;
+double SetYaw=0, InputYaw, OutputYaw;
+double SetThrottle=0;  // 1000-2000 us
+
+PID pidRoll(&InputRoll, &OutputRoll, &SetRoll, 2.8, 0.08, 2.2, DIRECT);
+PID pidPitch(&InputPitch, &OutputPitch, &SetPitch, 2.8, 0.08, 2.2, DIRECT);
+PID pidYaw(&InputYaw, &OutputYaw, &SetYaw, 3.5, 0.0, 1.5, DIRECT);
+
+unsigned long prevTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+  
+  mpu.initialize();
+  if (!mpu.testConnection()) {
+    Serial.println("MPU6050 Error!");
+    while(1);
+  }
+
+  for(int i=0; i<NUM_MOTORS; i++) {
+    motors[i].attach(motorPins[i], 1000, 2000);
+    motors[i].writeMicroseconds(1000); // Armado seguro
+  }
+
+  pidRoll.SetOutputLimits(-300, 300);
+  pidPitch.SetOutputLimits(-300, 300);
+  pidYaw.SetOutputLimits(-200, 200);
+  pidRoll.SetMode(AUTOMATIC);
+  pidPitch.SetMode(AUTOMATIC);
+  pidYaw.SetMode(AUTOMATIC);
+
+  Serial.println("=== OVNI Ambulancia Sigilosa Iniciado ===");
+}
+
+void loop() {
+  unsigned long now = millis();
+  float dt = (now - prevTime) / 1000.0;
+  prevTime = now;
+
+  // Leer IMU
+  int16_t ax, ay, az, gx, gy, gz;
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  InputRoll  = atan2(ay, az) * 180.0 / PI;
+  InputPitch = atan2(-ax, sqrt(ay*ay + az*az)) * 180.0 / PI;
+  InputYaw   += gz * dt / 131.0;   // Mejorar con filtro Madgwick después
+
+  // Leer throttle (potenciómetro, RC o autónomo)
+  SetThrottle = 1400;  // Ejemplo - reemplazar con receptor
+
+  pidRoll.Compute();
+  pidPitch.Compute();
+  pidYaw.Compute();
+
+  // Mezclador para configuración discoidal con 8 impulsores
+  // Distribuir para mínima vibración y ruido
+  int base = SetThrottle;
+  int m[8];
+  m[0] = base + OutputPitch + OutputRoll - OutputYaw;   // Posición 1
+  m[1] = base + OutputPitch - OutputRoll + OutputYaw;
+  m[2] = base - OutputPitch + OutputRoll + OutputYaw;
+  m[3] = base - OutputPitch - OutputRoll - OutputYaw;
+  // ... (añadir los 4 restantes según tu distribución simétrica)
+
+  for(int i=0; i<NUM_MOTORS; i++) {
+    m[i] = constrain(m[i], 1000, 2000);
+    motors[i].writeMicroseconds(m[i]);
+  }
+
+  delay(2);  // Loop rápido ~500Hz
+}
