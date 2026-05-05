@@ -1,0 +1,28 @@
+# Build artifacts
+*.o
+*.obj
+*.exe
+*.out
+*.app
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# PlatformIO
+.platformio/
+
+# Arduino
+*.ino.cpp
+*.ino.bin
+
+# Documentation
+docs/_build/
+*.log
+
+# Temp files
+*.tmp
+*.temp
+nul
